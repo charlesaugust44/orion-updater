@@ -21,7 +21,7 @@ const tmdbBaseURL = "https://api.themoviedb.org/3";
 const dlnaBaseUrl = "http://192.168.2.104:8200";
 const addonBaseUrl = "https://orion-dlna.vercel.app";
 
-const configPath = path.join(__dirname, '../config.json');
+const configPath = path.join(__dirname, 'config.json');
 
 const DlnaClient = new UPnPClient({
     url: dlnaBaseUrl + '/rootDesc.xml'
