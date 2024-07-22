@@ -1,8 +1,8 @@
 import UPnPClient from "node-upnp";
 import he from "he";
-import {parseString} from "xml2js";
+import { parseString } from "xml2js";
 import axios from "axios";
-import {promises as fs} from "fs";
+import { promises as fs } from "fs";
 import EventEmitter from "events";
 import crypto from "crypto";
 import path from "path";
@@ -23,13 +23,17 @@ const addonBaseUrl = "https://orion-dlna.vercel.app";
 
 const configPath = path.join(__dirname, 'config.json');
 
+const args = process.argv.slice(2);
+const isForce = args.includes('--force');
+const isDry = args.includes('--dry');
+
 const DlnaClient = new UPnPClient({
     url: dlnaBaseUrl + '/rootDesc.xml'
 });
 
 const DlnaEventServer = DlnaClient.getEventsServer();
 
-const torrentTerms = ['720p', '1080p', 'bluray', 'full hd', '5 1', 'x256', 'x265', 'rarbg', 'comandotorrents', 'x264', 'web dl', 'webdl', 'comando to'];
+const torrentTerms = ['720p', '1080p', 'bluray', 'full hd', '5 1', 'x256', 'x265', 'rarbg', 'comandotorrents', 'x264', 'web dl', 'webdl', 'comando to', 'www bludv com'];
 const torrentFilter = new RegExp(torrentTerms.join("|"), "gi");
 
 async function loadConfig() {
@@ -68,7 +72,7 @@ async function tmdbExternalSearch(id, type) {
 async function pushVideoList(videoList) {
     const config = await loadConfig();
 
-    return await axios.post(`/dlna`, videoList,{
+    return await axios.post(`/dlna`, videoList, {
         baseURL: addonBaseUrl,
         headers: {
             "x-orion-api-key": config.api_key
@@ -93,6 +97,8 @@ function extractSearchTitle(title) {
 
     return title
         .replaceAll(".", " ")
+        .replaceAll("{", " ")
+        .replaceAll("}", " ")
         .replaceAll("-", " ")
         .replace(torrentFilter, "")
         .trim()
@@ -187,20 +193,17 @@ async function fetchMetadata(videoList) {
     let metadata = [];
     for (const video of videoList) {
         const type = video.show ? 'tv' : 'movie';
-
-        console.log(`Searching for: ${video.searchTitle}`);
-
         const searchResult = await tmdbSearch(video.searchTitle, type);
 
-        if(searchResult.results.length === 0) {
-            console.log("    - Not Found");
+        if (searchResult.results.length === 0) {
+            console.log(`🔴 ${video.searchTitle} | ${video.filename}`);
             continue;
         }
 
         const mainResult = searchResult.results[0];
         const title = mainResult.original_name ?? mainResult.original_title ?? mainResult.title;
         const externalResult = await tmdbExternalSearch(mainResult.id, type);
-        console.log(`    - Found: ${title} - ${externalResult.imdb_id}`);
+        console.log(`🟢 ${video.searchTitle} | ${video.filename} \n\t${title} - ${externalResult.imdb_id}`);
 
         metadata.push({
             title: title,
@@ -245,16 +248,20 @@ async function isDifferent(videoList) {
 }
 
 async function run() {
-    console.log(getFormattedDate() + "Fetching DLNA Server.");
     const videoList = await fetchDlnaVideos('2$15');
     await DlnaClient.removeAllListeners();
 
-    if (!await isDifferent(videoList)) {
-        console.log(getFormattedDate() + "No changes found!");
+    if (!isForce && !await isDifferent(videoList)) {
         return;
     }
+
     console.log(getFormattedDate() + "Fetching metadata at TMDB.");
     const videoListMetadata = await fetchMetadata(videoList);
+
+    if (isDry) {
+        return;
+    }
+
     console.log(getFormattedDate() + "Pushing data to Addon.");
     await pushVideoList(videoListMetadata);
 }
